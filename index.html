@@ -3,33 +3,119 @@
 <head>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Sam Live</title>
+
+<style>
+body{
+  margin:0;
+  background:#000;
+  font-family:-apple-system;
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  height:100vh;
+}
+
+#phone{
+  width:420px;
+  height:800px;
+  background:#000;
+  border-radius:40px;
+  border:10px solid #111;
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;
+}
+
+#chat{
+  flex:1;
+  padding:15px;
+  overflow:auto;
+  display:flex;
+  flex-direction:column;
+}
+
+.bubble{
+  max-width:70%;
+  padding:12px;
+  margin:6px;
+  border-radius:20px;
+  color:white;
+  font-size:14px;
+}
+
+.user{
+  align-self:flex-end;
+  background:#0b93f6;
+}
+
+.sam{
+  align-self:flex-start;
+  background:#444;
+}
+
+#typing{
+  font-size:12px;
+  color:#aaa;
+  padding-left:10px;
+}
+
+#input{
+  display:flex;
+  padding:10px;
+  background:#111;
+}
+
+#input input{
+  flex:1;
+  padding:10px;
+  border-radius:20px;
+  border:none;
+  margin-right:10px;
+}
+
+#input button{
+  padding:10px 15px;
+  border:none;
+  border-radius:20px;
+  background:#0b93f6;
+  color:white;
+}
+</style>
 </head>
 
-<body style="background:black;color:white;font-family:sans-serif;margin:0;padding:20px;">
+<body>
 
-<h2>Sam Live</h2>
+<div id="phone">
 
-<div id="chat" style="height:60vh;overflow:auto;border:1px solid #333;padding:10px;"></div>
+<div id="chat"></div>
+<div id="typing"></div>
 
-<br>
+<div id="input">
+  <input id="nombre" placeholder="Tu nombre">
+  <input id="msg" placeholder="Mensaje">
+  <button onclick="send()">Enviar</button>
+</div>
 
-<input id="nombre" placeholder="Tu nombre" style="width:30%;">
-<input id="msg" placeholder="Escribe..." style="width:50%;">
-<button onclick="send()">Enviar</button>
+</div>
 
 <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 
 <script>
-const API_URL = "https://sam-backend-production-cafb.up.railway.app";
-const socket = io(API_URL);
-
+const socket = io("https://sam-backend-production-cafb.up.railway.app");
 const sessionId = "evento-cda";
 
+let enviando = false;
+
+// ===== ENVIAR =====
 function send(){
+  if(enviando) return;
+
   const nombre = document.getElementById("nombre").value;
   const msg = document.getElementById("msg").value;
 
   if(!nombre || !msg) return;
+
+  enviando = true;
 
   socket.emit("msg", {
     nombre,
@@ -38,43 +124,59 @@ function send(){
   });
 
   document.getElementById("msg").value = "";
+
+  setTimeout(()=> enviando = false, 500);
 }
 
-// ===== CHAT =====
-function agregar(user, txt){
+// ===== BURBUJAS =====
+function agregar(user, texto, esSam=false){
   const chat = document.getElementById("chat");
-  chat.innerHTML += `<p><b>${user}:</b> ${txt}</p>`;
+
+  const div = document.createElement("div");
+  div.className = "bubble " + (esSam ? "sam" : "user");
+  div.innerHTML = `<b>${user}</b><br>${texto}`;
+
+  chat.appendChild(div);
   chat.scrollTop = chat.scrollHeight;
 }
 
 // ===== VOZ =====
 function hablar(texto){
   const speech = new SpeechSynthesisUtterance(texto);
-
   speech.lang = "es-MX";
   speech.rate = 0.95;
   speech.pitch = 1.05;
-
   speechSynthesis.speak(speech);
 }
 
-// activar audio (importante)
 document.body.addEventListener("click", () => {
   speechSynthesis.resume();
 });
 
+// ===== TYPING =====
+function typing(txt){
+  document.getElementById("typing").innerText = txt;
+
+  setTimeout(()=>{
+    document.getElementById("typing").innerText = "";
+  },1500);
+}
+
 // ===== SOCKETS =====
 socket.on("chat", (m)=>{
-  agregar(m.nombre, m.mensaje);
+  agregar(m.nombre, m.mensaje, false);
 });
 
 socket.on("sam", (m)=>{
-  agregar("Sam", m.text);
+  typing("Sam está escribiendo...");
+  
+  setTimeout(()=>{
+    agregar("Sam", m.text, true);
 
-  // solo pantalla principal habla
-  if(window.location.hash === "#main"){
-    hablar(m.text);
-  }
+    if(window.location.hash === "#main"){
+      hablar(m.text);
+    }
+  }, 800 + Math.random()*800);
 });
 </script>
 
