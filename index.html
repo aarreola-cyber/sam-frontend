@@ -24,11 +24,15 @@ body{
   display:flex;
   flex-direction:column;
   overflow:hidden;
+  position:relative;
 }
 
+#status{
+  font-size:12px;color:#aaa;padding:6px 12px;
+}
 #chat{
   flex:1;
-  padding:15px;
+  padding:12px;
   overflow:auto;
   display:flex;
   flex-direction:column;
@@ -42,59 +46,62 @@ body{
   color:white;
   font-size:14px;
 }
-
-.user{
-  align-self:flex-end;
-  background:#0b93f6;
-}
-
-.sam{
-  align-self:flex-start;
-  background:#444;
-}
+.user{ align-self:flex-end; background:#0b93f6; }
+.sam{ align-self:flex-start; background:#444; }
 
 #typing{
-  font-size:12px;
-  color:#aaa;
-  padding-left:10px;
+  font-size:12px;color:#aaa;padding-left:10px;height:16px;
 }
+
+#samTyping{ display:none; padding-left:10px; }
+.typing span{
+  display:inline-block;width:6px;height:6px;margin:2px;
+  background:#ccc;border-radius:50%;
+  animation:blink 1.4s infinite;
+}
+.typing span:nth-child(2){animation-delay:.2s}
+.typing span:nth-child(3){animation-delay:.4s}
+@keyframes blink{0%,80%,100%{opacity:0}40%{opacity:1}}
 
 #input{
-  display:flex;
-  padding:10px;
-  background:#111;
+  display:flex;padding:10px;background:#111;
 }
-
 #input input{
-  flex:1;
-  padding:10px;
-  border-radius:20px;
-  border:none;
-  margin-right:10px;
+  flex:1;padding:10px;border-radius:20px;border:none;margin-right:8px;
+}
+#input button{
+  padding:10px 14px;border:none;border-radius:20px;background:#0b93f6;color:#fff;
 }
 
-#input button{
-  padding:10px 15px;
-  border:none;
-  border-radius:20px;
-  background:#0b93f6;
-  color:white;
+/* leaderboard */
+#leaderboard{
+  position:absolute;right:10px;top:10px;background:#111;padding:8px 10px;
+  border-radius:12px;font-size:12px;color:#fff;min-width:140px;
 }
 </style>
 </head>
 
 <body>
-
 <div id="phone">
 
-<div id="chat"></div>
-<div id="typing"></div>
+  <div id="leaderboard"><b>Top</b><div id="leaders"></div></div>
 
-<div id="input">
-  <input id="nombre" placeholder="Tu nombre">
-  <input id="msg" placeholder="Mensaje">
-  <button onclick="send()">Enviar</button>
-</div>
+  <div id="status"><span style="color:#4CAF50">●</span> Sam en línea</div>
+
+  <div id="chat"></div>
+  <div id="typing"></div>
+
+  <div id="samTyping">
+    <div class="bubble sam typing">
+      <span></span><span></span><span></span>
+    </div>
+  </div>
+
+  <div id="input">
+    <input id="nombre" placeholder="Tu nombre">
+    <input id="msg" placeholder="Mensaje">
+    <button onclick="send()">Enviar</button>
+  </div>
 
 </div>
 
@@ -106,79 +113,163 @@ const sessionId = "evento-cda";
 
 let enviando = false;
 
+// ===== VOZ (solo #main) =====
+function hablar(texto){
+  const s = new SpeechSynthesisUtterance(texto);
+  s.lang = "es-MX"; s.rate = 0.95; s.pitch = 1.05;
+  speechSynthesis.speak(s);
+}
+document.body.addEventListener("click", ()=> speechSynthesis.resume());
+
 // ===== ENVIAR =====
 function send(){
   if(enviando) return;
-
   const nombre = document.getElementById("nombre").value;
   const msg = document.getElementById("msg").value;
-
   if(!nombre || !msg) return;
 
   enviando = true;
-
-  socket.emit("msg", {
-    nombre,
-    mensaje: msg,
-    sessionId
-  });
-
+  socket.emit("msg", { nombre, mensaje: msg, sessionId });
   document.getElementById("msg").value = "";
 
-  setTimeout(()=> enviando = false, 500);
+  setTimeout(()=> enviando=false, 400);
 }
 
-// ===== BURBUJAS =====
+// ===== TYPING (cola 2–3) =====
+const typingUsers = new Set();
+let typingClearTimer;
+
+document.getElementById("msg").addEventListener("input", ()=>{
+  const nombre = document.getElementById("nombre").value || "alguien";
+  socket.emit("typing", { nombre });
+});
+
+socket.on("typing", (nombre)=>{
+  typingUsers.add(nombre);
+  renderTyping();
+
+  clearTimeout(typingClearTimer);
+  typingClearTimer = setTimeout(()=>{
+    typingUsers.clear(); renderTyping();
+  }, 1200);
+});
+
+function renderTyping(){
+  const el = document.getElementById("typing");
+  const arr = Array.from(typingUsers).slice(0,3);
+
+  if(arr.length===0) el.innerText="";
+  else if(arr.length===1) el.innerText=`${arr[0]} está escribiendo…`;
+  else if(arr.length===2) el.innerText=`${arr[0]} y ${arr[1]} están escribiendo…`;
+  else el.innerText=`${arr[0]}, ${arr[1]} y más…`;
+}
+
+// ===== BURBUJAS + HIGHLIGHT =====
+let ultimoHighlight = 0;
+function esClave(texto){
+  const now = Date.now();
+  if (now - ultimoHighlight < 2500) return false;
+
+  let score = 0;
+  if (texto.length > 70) score += 2;
+  if (texto.includes("?")) score += 2;
+  if (/\b(no|pero|depende)\b/i.test(texto)) score += 1;
+
+  if (score >= 3){
+    ultimoHighlight = now;
+    return true;
+  }
+  return false;
+}
+
 function agregar(user, texto, esSam=false){
   const chat = document.getElementById("chat");
-
   const div = document.createElement("div");
   div.className = "bubble " + (esSam ? "sam" : "user");
-  div.innerHTML = `<b>${user}</b><br>${texto}`;
 
+  if (esClave(texto)){
+    div.style.border = "2px solid #FFD54A";
+    div.style.boxShadow = "0 0 12px rgba(255,213,74,.8)";
+    document.body.style.background = "#111";
+    setTimeout(()=> document.body.style.background="#000", 200);
+  }
+
+  div.innerHTML = `<b>${user}</b><br>${texto}`;
   chat.appendChild(div);
   chat.scrollTop = chat.scrollHeight;
 }
 
-// ===== VOZ =====
-function hablar(texto){
-  const speech = new SpeechSynthesisUtterance(texto);
-  speech.lang = "es-MX";
-  speech.rate = 0.95;
-  speech.pitch = 1.05;
-  speechSynthesis.speak(speech);
+// ===== EFECTOS =====
+function samTyping(on){
+  document.getElementById("samTyping").style.display = on ? "block" : "none";
+}
+function peakEffect(){
+  document.body.style.background = "#1a1a2e";
+  setTimeout(()=> document.body.style.background="#000", 300);
+}
+function conflictEffect(){
+  document.body.style.background = "#2a0000";
+  setTimeout(()=> document.body.style.background="#000", 400);
+}
+function climaxEffect(){
+  document.body.style.background = "#330000";
+  const flash = document.createElement("div");
+  flash.style.position="fixed"; flash.style.top=0; flash.style.left=0;
+  flash.style.width="100%"; flash.style.height="100%";
+  flash.style.background="rgba(255,0,0,0.15)";
+  flash.style.zIndex="999";
+  document.body.appendChild(flash);
+  setTimeout(()=>{ flash.remove(); document.body.style.background="#000"; }, 400);
+}
+function spotlightEffect(nombre){
+  const el = document.createElement("div");
+  el.innerText = `→ ${nombre}`;
+  el.style.position="fixed"; el.style.top="50%"; el.style.left="50%";
+  el.style.transform="translate(-50%,-50%)";
+  el.style.fontSize="32px"; el.style.color="#FFD54A"; el.style.zIndex="999";
+  document.body.appendChild(el);
+  setTimeout(()=> el.remove(), 1200);
 }
 
-document.body.addEventListener("click", () => {
-  speechSynthesis.resume();
-});
+// ===== LEADERBOARD =====
+function renderLeaderboard(personas){
+  const sorted = Object.entries(personas)
+    .sort((a,b)=>b[1].mensajes - a[1].mensajes)
+    .slice(0,5);
 
-// ===== TYPING =====
-function typing(txt){
-  document.getElementById("typing").innerText = txt;
-
-  setTimeout(()=>{
-    document.getElementById("typing").innerText = "";
-  },1500);
+  const container = document.getElementById("leaders");
+  container.innerHTML = sorted.map(([n,v],i)=>`
+    <div style="margin:4px 0; transform:translateX(${i*5}px); transition:all .4s;">
+      ${i+1}. ${n} (${v.mensajes})
+    </div>
+  `).join("");
 }
 
 // ===== SOCKETS =====
-socket.on("chat", (m)=>{
-  agregar(m.nombre, m.mensaje, false);
+socket.on("chat", (m)=> agregar(m.nombre, m.mensaje, false));
+
+socket.on("updateUsers", (personas)=>{
+  renderLeaderboard(personas);
 });
 
 socket.on("sam", (m)=>{
-  typing("Sam está escribiendo...");
-  
+  samTyping(true);
+
   setTimeout(()=>{
+    samTyping(false);
     agregar("Sam", m.text, true);
 
-    if(window.location.hash === "#main"){
+    if (m.climax) climaxEffect();
+    else if (m.conflict) conflictEffect();
+    else if (m.peak) peakEffect();
+
+    if (m.spotlight) spotlightEffect(m.spotlight);
+
+    if (window.location.hash === "#main"){
       hablar(m.text);
     }
   }, 800 + Math.random()*800);
 });
 </script>
-
 </body>
 </html>
