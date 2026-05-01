@@ -14,7 +14,6 @@ body{
   align-items:center;
   height:100vh;
 }
-
 #phone{
   width:420px;
   height:800px;
@@ -23,10 +22,7 @@ body{
   border:10px solid #111;
   display:flex;
   flex-direction:column;
-  overflow:hidden;
-  position:relative;
 }
-
 #chat{
   flex:1;
   padding:12px;
@@ -34,30 +30,34 @@ body{
   display:flex;
   flex-direction:column;
 }
-
 .bubble{
   max-width:70%;
   padding:12px;
   margin:6px;
   border-radius:20px;
   color:white;
-  font-size:14px;
 }
 .user{ align-self:flex-end; background:#0b93f6; }
 .sam{ align-self:flex-start; background:#444; }
 
-#typing{
-  font-size:12px;color:#aaa;padding-left:10px;height:16px;
-}
-
 #input{
-  display:flex;padding:10px;background:#111;
+  display:flex;
+  padding:10px;
+  background:#111;
 }
 #input input{
-  flex:1;padding:10px;border-radius:20px;border:none;margin-right:8px;
+  flex:1;
+  padding:10px;
+  border-radius:20px;
+  border:none;
+  margin-right:8px;
 }
 #input button{
-  padding:10px 14px;border:none;border-radius:20px;background:#0b93f6;color:#fff;
+  padding:10px 14px;
+  border:none;
+  border-radius:20px;
+  background:#0b93f6;
+  color:white;
 }
 </style>
 </head>
@@ -66,7 +66,6 @@ body{
 <div id="phone">
 
 <div id="chat"></div>
-<div id="typing"></div>
 
 <div id="input">
   <input id="msg" placeholder="Escribe...">
@@ -82,19 +81,9 @@ const socket = io("https://sam-backend-production-cafb.up.railway.app");
 const sessionId = "evento-cda";
 
 let nombre = localStorage.getItem("nombre");
-let esperandoNombre = false;
+let estado = nombre ? "chat" : "nombre";
 
-// ===== VOZ =====
-function hablar(texto){
-  const s = new SpeechSynthesisUtterance(texto);
-  s.lang = "es-MX";
-  s.rate = 0.95;
-  s.pitch = 1.05;
-  speechSynthesis.speak(s);
-}
-document.body.addEventListener("click", ()=> speechSynthesis.resume());
-
-// ===== BURBUJAS =====
+// UI
 function agregar(user, texto, esSam=false){
   const chat = document.getElementById("chat");
   const div = document.createElement("div");
@@ -104,46 +93,40 @@ function agregar(user, texto, esSam=false){
   chat.scrollTop = chat.scrollHeight;
 }
 
-// ===== ONBOARDING =====
-function pedirNombre(){
-  esperandoNombre = true;
-  agregar("Sam", "¿Cómo te llamas?", true);
-}
+// inicio
+setTimeout(()=>{
+  if (!nombre){
+    agregar("Sam", "hey… 👀", true);
+    setTimeout(()=>{
+      agregar("Sam", "¿cómo te llamas?", true);
+    }, 700);
+  } else {
+    agregar("Sam", `qué onda ${nombre} 👀`, true);
+  }
+}, 500);
 
-if (!nombre){
-  setTimeout(pedirNombre, 800);
-} else {
-  agregar("Sam", `hola ${nombre} 👀`, true);
-}
-
-// ===== ENVIAR =====
+// enviar
 function send(){
-  const msg = document.getElementById("msg").value;
+  const msg = document.getElementById("msg").value.trim();
   if (!msg) return;
 
   document.getElementById("msg").value = "";
 
-  // 👉 si está pidiendo nombre
-  if (esperandoNombre){
-    nombre = msg.trim();
+  if (estado === "nombre"){
+    nombre = msg;
     localStorage.setItem("nombre", nombre);
-    esperandoNombre = false;
+    estado = "chat";
 
-    agregar(nombre, msg, false);
+    agregar(nombre, msg);
 
     setTimeout(()=>{
-      agregar("Sam", `ok ${nombre}, a ver qué traes 👀`, true);
-    }, 600);
+      agregar("Sam", "va, ya estás dentro 👀", true);
+    }, 500);
 
     return;
   }
 
-  if (!nombre){
-    pedirNombre();
-    return;
-  }
-
-  agregar(nombre, msg, false);
+  agregar(nombre, msg);
 
   socket.emit("msg", {
     nombre,
@@ -152,19 +135,15 @@ function send(){
   });
 }
 
-// ===== SOCKETS =====
+// sockets
 socket.on("chat", (m)=>{
-  agregar(m.nombre, m.mensaje, false);
+  agregar(m.nombre, m.mensaje);
 });
 
 socket.on("sam", (m)=>{
   setTimeout(()=>{
     agregar("Sam", m.text, true);
-
-    if (window.location.hash === "#main"){
-      hablar(m.text);
-    }
-  }, 600 + Math.random()*600);
+  }, 500);
 });
 </script>
 
